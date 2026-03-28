@@ -67,6 +67,24 @@ class ModelInfo(BaseModel):
     provider: str
 
 
+class AIAgentRequest(BaseModel):
+    folder_path: str = ""     # workspace-relative target folder ("" = root)
+    prompt: str
+    model: str
+
+
+class AIAgentCreatedFile(BaseModel):
+    path: str                 # workspace-relative path
+    filename: str             # relative to folder_path
+
+
+class AIAgentResponse(BaseModel):
+    folder_path: str
+    created: List[str]        # workspace-relative paths of all written files
+    summary: str
+    model: str
+
+
 # ── GitHub schemas ─────────────────────────────────────────────────────────────
 
 class GitHubCommitRequest(BaseModel):

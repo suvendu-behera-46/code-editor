@@ -60,6 +60,11 @@ export const api = {
     return res.data;
   },
 
+  agentRun: async ({ folder_path, prompt, model }) => {
+    const res = await http.post('/ai/agent', { folder_path, prompt, model });
+    return res.data;
+  },
+
   // ── GitHub ─────────────────────────────────────────────────────────────────
 
   getGithubUser: async (token) => {

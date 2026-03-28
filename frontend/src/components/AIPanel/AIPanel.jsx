@@ -67,10 +67,12 @@ export default function AIPanel() {
     acceptPendingFile, skipPendingFile,
     acceptAllPendingFiles, discardAllPendingFiles,
     openFile,
+    agentLog, agentLoading, runAgent, clearAgentLog,
   } = useEditorStore();
 
   const folders = useMemo(() => getFolders(fileTree || []), [fileTree]);
   const isFolderTarget = aiTargetType === 'folder';
+  const isAgentMode = aiTargetType === 'agent';
   const currentMode = AI_MODES.find((m) => m.id === aiMode);
   const isCodeMode = CODE_MODES.includes(aiMode);
   const providers = useMemo(() => [...new Set(MODELS.map((m) => m.provider))], []);
@@ -78,7 +80,9 @@ export default function AIPanel() {
   const handleKeyDown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      isFolderTarget ? runAIFolder() : runAI();
+      if (isAgentMode) runAgent();
+      else if (isFolderTarget) runAIFolder();
+      else runAI();
     }
   };
 
@@ -89,13 +93,13 @@ export default function AIPanel() {
         <span className="panel-title">AI Assistant</span>
       </div>
 
-      {/* Target type toggle: File vs Folder */}
+      {/* Target type toggle: File vs Folder vs Agent */}
       <div className="ai-panel__target-toggle">
         <button
-          className={`ai-panel__target-btn${!isFolderTarget ? ' active' : ''}`}
+          className={`ai-panel__target-btn${!isFolderTarget && !isAgentMode ? ' active' : ''}`}
           onClick={() => setAITargetType('file')}
         >
-          📄 Current File
+          📄 File
         </button>
         <button
           className={`ai-panel__target-btn${isFolderTarget ? ' active' : ''}`}
@@ -103,10 +107,39 @@ export default function AIPanel() {
         >
           📁 Folder
         </button>
+        <button
+          className={`ai-panel__target-btn${isAgentMode ? ' active' : ''}`}
+          onClick={() => setAITargetType('agent')}
+          title="Agent mode — AI builds the full project automatically"
+        >
+          🤖 Agent
+        </button>
       </div>
 
       {/* Context row */}
-      {isFolderTarget ? (
+      {isAgentMode ? (
+        /* Agent: folder selector (same as folder mode) */
+        <div className="ai-panel__folder-row">
+          <div className="ai-panel__model-label">Target folder (leave empty for workspace root)</div>
+          <input
+            list="ai-agent-folder-list"
+            className="ai-panel__folder-input"
+            placeholder="e.g. my-react-app"
+            value={aiTargetFolder}
+            onChange={(e) => setAITargetFolder(e.target.value)}
+            spellCheck={false}
+          />
+          <datalist id="ai-agent-folder-list">
+            <option value="" label="/ (workspace root)" />
+            {folders.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
+          <div style={{ fontSize: 10, color: 'var(--text-disabled)', marginTop: 3 }}>
+            Folder will be created if it doesn't exist
+          </div>
+        </div>
+      ) : isFolderTarget ? (
         /* Folder selector */
         <div className="ai-panel__folder-row">
           <div className="ai-panel__model-label">Target folder (leave empty for workspace root)</div>
@@ -141,7 +174,7 @@ export default function AIPanel() {
       )}
 
       {/* Mode tabs — only shown for file target */}
-      {!isFolderTarget && (
+      {!isFolderTarget && !isAgentMode && (
         <div style={{
           display: 'flex', gap: 2, padding: '8px 12px 0',
           borderBottom: '1px solid var(--border)', flexShrink: 0,
@@ -188,13 +221,20 @@ export default function AIPanel() {
 
       {/* Prompt */}
       <div className="ai-panel__prompt-area">
-        {!isFolderTarget && (
+        {!isFolderTarget && !isAgentMode && (
           <div className="ai-panel__prompt-label">{currentMode?.hint}</div>
+        )}
+        {isAgentMode && (
+          <div className="ai-panel__prompt-label">
+            Describe the project to build — Agent will create all files automatically
+          </div>
         )}
         <textarea
           className="ai-panel__prompt-input"
           placeholder={
-            isFolderTarget
+            isAgentMode
+              ? 'e.g. "Create a new React project with Vite, TailwindCSS, and a counter component"'
+              : isFolderTarget
               ? 'Describe what to generate, e.g. "A React Button component with primary/secondary variants and TypeScript types"'
               : aiMode === 'edit' ? 'e.g. "Convert this to TypeScript"'
               : aiMode === 'explain' ? 'e.g. "What does this function do?"'
@@ -207,13 +247,21 @@ export default function AIPanel() {
         />
         <button
           className="ai-panel__run-btn"
-          onClick={isFolderTarget ? runAIFolder : runAI}
-          disabled={aiLoading}
-          title={isFolderTarget ? 'Generate files in folder (Ctrl+Enter)' : 'Run AI (Ctrl+Enter)'}
+          onClick={isAgentMode ? runAgent : isFolderTarget ? runAIFolder : runAI}
+          disabled={aiLoading || agentLoading}
+          title={
+            isAgentMode
+              ? 'Run Agent — builds the project automatically (Ctrl+Enter)'
+              : isFolderTarget
+              ? 'Generate files in folder (Ctrl+Enter)'
+              : 'Run AI (Ctrl+Enter)'
+          }
         >
-          {aiLoading
-            ? '⏳ Generating...'
-            : isFolderTarget
+          {(aiLoading || agentLoading)
+            ? '⏳ Working...'
+            : isAgentMode
+              ? '🤖 Run Agent  (Ctrl+Enter)'
+              : isFolderTarget
               ? '🪄 Generate Files  (Ctrl+Enter)'
               : '▶  Run AI  (Ctrl+Enter)'}
         </button>
@@ -221,15 +269,60 @@ export default function AIPanel() {
 
       {/* Response area */}
       <div className="ai-panel__response">
-        {aiLoading && (
+        {(aiLoading || agentLoading) && (
           <div className="ai-panel__loading">
             <div className="spinner" />
-            {isFolderTarget ? 'Thinking…' : `Waiting for ${selectedModel}…`}
+            {isAgentMode
+              ? '🤖 Agent is building your project…'
+              : isFolderTarget
+              ? 'Thinking…'
+              : `Waiting for ${selectedModel}…`}
           </div>
         )}
 
         {aiError && (
           <div className="ai-panel__error">⚠ {aiError}</div>
+        )}
+
+        {/* ── Agent mode: auto-created files log ── */}
+        {isAgentMode && agentLog.length > 0 && !agentLoading && (
+          <div className="ai-panel__pending">
+            <div className="ai-panel__pending-header">
+              <span className="ai-panel__pending-title">
+                ✅ Agent completed
+              </span>
+              <button
+                className="ai-panel__action-btn skip"
+                onClick={clearAgentLog}
+                title="Clear log"
+              >
+                ✗ Clear
+              </button>
+            </div>
+            {agentLog.map((entry, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: '3px 12px',
+                  fontSize: 12,
+                  color: entry.type === 'error'
+                    ? 'var(--text-error)'
+                    : entry.type === 'success'
+                    ? 'var(--accent)'
+                    : 'var(--text-secondary)',
+                  fontFamily: entry.type === 'created' ? 'monospace' : 'inherit',
+                }}
+              >
+                {entry.type === 'created' ? `  ✓ ${entry.text}` : entry.text}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isAgentMode && agentLog.length === 0 && !agentLoading && !aiError && (
+          <div style={{ color: 'var(--text-disabled)', fontSize: 11, textAlign: 'center', paddingTop: 16 }}>
+            Describe your project — Agent will create all files automatically, no confirmation needed
+          </div>
         )}
 
         {/* ── Folder mode: Copilot-style pending file review ── */}
@@ -352,7 +445,7 @@ export default function AIPanel() {
           </div>
         )}
 
-        {!aiLoading && !aiResponse && pendingFiles.length === 0 && !aiError && (
+        {!aiLoading && !agentLoading && !aiResponse && pendingFiles.length === 0 && !aiError && !isAgentMode && (
           <div style={{ color: 'var(--text-disabled)', fontSize: 11, textAlign: 'center', paddingTop: 16 }}>
             {isFolderTarget
               ? 'Describe what to build — AI will propose files for you to review'

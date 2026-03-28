@@ -271,3 +271,61 @@ async def run_ai_folder_generate(
             502,
             f"AI returned invalid JSON ({exc}). Raw response (first 600 chars): {raw[:600]}"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent mode — autonomous project scaffolding, writes files without confirmation
+# ─────────────────────────────────────────────────────────────────────────────
+
+AGENT_SYSTEM_PROMPT = (
+    "You are an expert software engineer acting as an autonomous coding agent. "
+    "The user will describe a project or feature to build inside a folder. "
+    "Generate the COMPLETE project with ALL necessary files — source code, config, "
+    "package.json / pyproject.toml / Makefile, README, .gitignore, etc.\n\n"
+    "CRITICAL RULES:\n"
+    "1. Respond with ONLY a valid JSON object. No markdown fences, no explanations, no preamble.\n"
+    "2. The object must have exactly two string keys:\n"
+    "   \"files\"  : array of objects, each with \"filename\" (string) and \"content\" (string)\n"
+    "   \"summary\": one-sentence plain-text description of what was created\n"
+    "3. \"filename\" is the path relative to the target folder (subfolders allowed).\n"
+    "4. Every file must have complete, working content — no placeholders, no TODOs.\n"
+    "5. Return 1-30 files maximum. No binary files.\n"
+    "6. Start your response with { and end with }. Nothing else."
+)
+
+
+async def run_agent(model: str, folder_path: str, prompt: str) -> dict:
+    """
+    Ask the AI to plan a full project and return {files: [...], summary: str}.
+    Files are NOT written here — the router handles disk writes.
+    """
+    label = folder_path.strip("/") or "workspace root"
+    user_msg = (
+        f'Target folder: "{label}"\n\n'
+        f'User request: {prompt}\n\n'
+        "Generate the complete project now."
+    )
+
+    call_fn = _dispatch_model(model)
+    raw = await call_fn(model, AGENT_SYSTEM_PROMPT, user_msg)
+
+    text = raw.strip()
+    text = re.sub(r'^```[a-zA-Z]*\n?', '', text)
+    text = re.sub(r'\n?```$', '', text).strip()
+
+    try:
+        result = json.loads(text)
+        if not isinstance(result, dict):
+            raise ValueError("Response is not a JSON object")
+        if "files" not in result or not isinstance(result["files"], list):
+            raise ValueError("Missing or invalid 'files' key")
+        for f in result["files"]:
+            if not isinstance(f, dict) or "filename" not in f or "content" not in f:
+                raise ValueError(f"Invalid file entry: {f!r}")
+        result.setdefault("summary", f"Created {len(result['files'])} file(s).")
+        return result
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(
+            502,
+            f"Agent returned invalid JSON ({exc}). Raw response (first 600 chars): {raw[:600]}"
+        )

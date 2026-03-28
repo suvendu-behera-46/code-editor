@@ -17,7 +17,7 @@ export const useEditorStore = create((set, get) => ({
   // ── AI ──────────────────────────────────────────────────────────────────────
   aiPanelOpen: true,
   aiMode: 'edit',          // edit | explain | refactor | generate
-  aiTargetType: 'file',    // 'file' | 'folder'
+  aiTargetType: 'file',    // 'file' | 'folder' | 'agent'
   aiTargetFolder: '',      // workspace-relative path, '' = root
   selectedModel: 'groq/llama-3.3-70b-versatile',
   aiPrompt: '',
@@ -26,6 +26,9 @@ export const useEditorStore = create((set, get) => ({
   pendingFolderPath: '',   // folder context for the pending batch
   aiLoading: false,
   aiError: null,
+  // Agent mode state
+  agentLog: [],            // [{type: 'info'|'success'|'error', text: string}]
+  agentLoading: false,
 
   // ── GitHub ──────────────────────────────────────────────────────────────────
   githubPanelOpen: false,
@@ -147,7 +150,7 @@ export const useEditorStore = create((set, get) => ({
   setAIMode: (mode) => set({ aiMode: mode, aiResponse: null, pendingFiles: [], aiError: null }),
   setSelectedModel: (model) => set({ selectedModel: model }),
   setAIPrompt: (prompt) => set({ aiPrompt: prompt }),
-  setAITargetType: (type) => set({ aiTargetType: type, aiResponse: null, pendingFiles: [], aiError: null }),
+  setAITargetType: (type) => set({ aiTargetType: type, aiResponse: null, pendingFiles: [], aiError: null, agentLog: [] }),
   setAITargetFolder: (folder) => set({ aiTargetFolder: folder }),
   toggleAIPanel: () => set((state) => ({ aiPanelOpen: !state.aiPanelOpen })),
   clearAIResponse: () => set({ aiResponse: null, pendingFiles: [], pendingFolderPath: '', aiError: null }),
@@ -262,6 +265,42 @@ export const useEditorStore = create((set, get) => ({
 
   // Discard all pending files without saving
   discardAllPendingFiles: () => set({ pendingFiles: [], pendingFolderPath: '' }),
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Agent Mode — autonomous scaffolding, writes all files immediately
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  clearAgentLog: () => set({ agentLog: [] }),
+
+  runAgent: async () => {
+    const { aiTargetFolder, selectedModel, aiPrompt } = get();
+    if (!aiPrompt.trim()) {
+      set({ aiError: 'Enter a description of what to build.' });
+      return;
+    }
+    set({ agentLoading: true, agentLog: [], aiError: null });
+    try {
+      const response = await api.agentRun({
+        folder_path: aiTargetFolder,
+        prompt: aiPrompt,
+        model: selectedModel,
+      });
+      await get().loadFileTree();
+      if (response.created.length > 0) {
+        await get().openFile(response.created[0]);
+      }
+      set({
+        agentLog: [
+          { type: 'success', text: response.summary },
+          ...response.created.map((p) => ({ type: 'created', text: p })),
+        ],
+        agentLoading: false,
+      });
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'Agent failed.';
+      set({ agentLog: [{ type: 'error', text: msg }], agentLoading: false });
+    }
+  },
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GitHub Actions

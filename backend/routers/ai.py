@@ -8,9 +8,10 @@ from config import settings
 from models.schemas import (
     AIEditRequest, AIEditResponse,
     AIFolderGenerateRequest, AIFolderGenerateResponse, AIFolderGenerateFile,
+    AIAgentRequest, AIAgentResponse,
     ModelInfo,
 )
-from services.llm_service import run_ai, run_ai_folder_generate
+from services.llm_service import run_ai, run_ai_folder_generate, run_agent
 from routers.files import safe_path
 
 router = APIRouter()
@@ -109,5 +110,44 @@ async def generate_in_folder(body: AIFolderGenerateRequest):
     return AIFolderGenerateResponse(
         folder_path=folder_rel,
         files=proposed,
+        model=body.model,
+    )
+
+
+@router.post("/agent", response_model=AIAgentResponse)
+async def run_agent_endpoint(body: AIAgentRequest):
+    """
+    Autonomous agent: AI plans a full project and all files are written to disk
+    immediately — no per-file confirmation required.
+    """
+    workspace = os.path.abspath(settings.workspace_dir)
+
+    folder_rel = body.folder_path.strip().strip("/")
+    folder_abs = safe_path(folder_rel) if folder_rel else workspace
+
+    # Ask the AI to plan everything
+    plan = await run_agent(model=body.model, folder_path=folder_rel, prompt=body.prompt)
+
+    created: list[str] = []
+    for item in plan.get("files", []):
+        filename = item["filename"].lstrip("/").lstrip("\\")
+        content = item.get("content", "")
+
+        file_abs = os.path.normpath(os.path.join(folder_abs, filename))
+        # Security: never write outside the workspace
+        if not file_abs.startswith(workspace + os.sep) and file_abs != workspace:
+            continue
+
+        os.makedirs(os.path.dirname(file_abs), exist_ok=True)
+        with open(file_abs, "w", encoding="utf-8") as fh:
+            fh.write(content)
+
+        ws_rel = os.path.relpath(file_abs, workspace).replace("\\", "/")
+        created.append(ws_rel)
+
+    return AIAgentResponse(
+        folder_path=folder_rel,
+        created=created,
+        summary=plan.get("summary", f"Created {len(created)} file(s)."),
         model=body.model,
     )
