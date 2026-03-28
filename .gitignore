@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+env/
+.env
+*.pyc
+
+# Node / Frontend
+node_modules/
+dist/
+.cache/
+*.local
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Workspace files (user data)
+backend/workspace/*
+!backend/workspace/.gitkeep
+!backend/workspace/example/
+
+# Logs
+*.log
