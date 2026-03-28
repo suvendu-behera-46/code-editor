@@ -68,6 +68,9 @@ export default function AIPanel() {
     acceptAllPendingFiles, discardAllPendingFiles,
     openFile,
     agentLog, agentLoading, runAgent, clearAgentLog,
+    clarifyingQuestions, clarifyingAnswers, showClarifyingDialog,
+    updateClarifyingAnswer, runAgentWithAnswers, closeClarifyingDialog,
+    executeCode,
   } = useEditorStore();
 
   const folders = useMemo(() => getFolders(fileTree || []), [fileTree]);
@@ -414,6 +417,13 @@ export default function AIPanel() {
                       </button>
                     )}
                     <button
+                      className="ai-panel__action-btn accept"
+                      onClick={() => executeCode(aiResponse.result, 'python')}
+                      title="Run this code in terminal"
+                    >
+                      ▶ Run
+                    </button>
+                    <button
                       className="ai-panel__action-btn discard-all"
                       onClick={clearAIResponse}
                       title="Discard this result"
@@ -453,6 +463,115 @@ export default function AIPanel() {
           </div>
         )}
       </div>
+
+      {/* Clarifying Questions Dialog */}
+      {showClarifyingDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: 24,
+            maxWidth: 600,
+            maxHeight: 'calc(100vh - 40px)',
+            overflow: 'auto',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          }}>
+            <h2 style={{ marginTop: 0, marginBottom: 16, color: 'var(--text-primary)' }}>
+              💡 Let's clarify your project
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: 20, fontSize: 13 }}>
+              Please answer the following questions to help me build exactly what you need:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {clarifyingQuestions.map((q, i) => (
+                <div key={i}>
+                  <label style={{
+                    display: 'block',
+                    color: 'var(--text-primary)',
+                    fontWeight: 500,
+                    marginBottom: 6,
+                    fontSize: 13,
+                  }}>
+                    {i + 1}. {q.question}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Your answer…"
+                    value={clarifyingAnswers[i] || ''}
+                    onChange={(e) => updateClarifyingAnswer(i, e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      background: 'var(--bg-editor)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 4,
+                      color: 'var(--text-primary)',
+                      fontSize: 12,
+                      fontFamily: 'inherit',
+                      boxSizing: 'border-box',
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        runAgentWithAnswers();
+                      }
+                    }}
+                  />
+                  {q.hint && (
+                    <div style={{ fontSize: 11, color: 'var(--text-disabled)', marginTop: 4 }}>
+                      Hint: {q.hint}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              display: 'flex', gap: 8, marginTop: 24, justifyContent: 'flex-end',
+            }}>
+              <button
+                onClick={closeClarifyingDialog}
+                style={{
+                  padding: '8px 16px',
+                  background: 'transparent',
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 500,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={runAgentWithAnswers}
+                disabled={agentLoading}
+                style={{
+                  padding: '8px 16px',
+                  background: 'var(--accent)',
+                  border: 'none',
+                  borderRadius: 4,
+                  color: 'white',
+                  cursor: agentLoading ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  opacity: agentLoading ? 0.7 : 1,
+                }}
+              >
+                {agentLoading ? '⏳ Building...' : '🚀 Build with answers'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

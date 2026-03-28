@@ -9,9 +9,10 @@ from models.schemas import (
     AIEditRequest, AIEditResponse,
     AIFolderGenerateRequest, AIFolderGenerateResponse, AIFolderGenerateFile,
     AIAgentRequest, AIAgentResponse,
+    AIClarifyingQuestionsRequest, AIClarifyingQuestionsResponse, AIClarifyingQuestion,
     ModelInfo,
 )
-from services.llm_service import run_ai, run_ai_folder_generate, run_agent
+from services.llm_service import run_ai, run_ai_folder_generate, run_agent, ask_clarifying_questions
 from routers.files import safe_path
 
 router = APIRouter()
@@ -45,6 +46,26 @@ AVAILABLE_MODELS = [
 def get_models():
     """List all supported AI models."""
     return AVAILABLE_MODELS
+
+
+@router.post("/ask-questions", response_model=AIClarifyingQuestionsResponse)
+async def get_clarifying_questions(body: AIClarifyingQuestionsRequest):
+    """
+    Ask the AI to generate 2-4 clarifying questions about the user's project request.
+    Used before running the agent to better understand requirements.
+    """
+    questions_list = await ask_clarifying_questions(
+        model=body.model,
+        prompt=body.prompt,
+    )
+    
+    # Convert to AIClarifyingQuestion objects
+    questions = [AIClarifyingQuestion(question=q) for q in questions_list]
+    
+    return AIClarifyingQuestionsResponse(
+        questions=questions,
+        model=body.model,
+    )
 
 
 @router.post("/edit", response_model=AIEditResponse)

@@ -277,6 +277,18 @@ async def run_ai_folder_generate(
 # Agent mode — autonomous project scaffolding, writes files without confirmation
 # ─────────────────────────────────────────────────────────────────────────────
 
+CLARIFY_SYSTEM_PROMPT = (
+    "You are a helpful coding assistant. The user will describe a project or feature to build. "
+    "Your job is to ask 2-4 clarifying questions to better understand their requirements before building. "
+    "Ask about: technology stack, project structure, specific features, and any constraints.\n\n"
+    "CRITICAL RULES:\n"
+    "1. Respond with ONLY a valid JSON object. No markdown fences, no explanations, no preamble.\n"
+    "2. The object must have exactly one key \"questions\" (array of strings).\n"
+    "3. Each question should be a single line, clear and specific.\n"
+    "4. Ask 2-4 questions maximum.\n"
+    "5. Start your response with { and end with }. Nothing else."
+)
+
 AGENT_SYSTEM_PROMPT = (
     "You are an expert software engineer acting as an autonomous coding agent. "
     "The user will describe a project or feature to build inside a folder. "
@@ -292,6 +304,37 @@ AGENT_SYSTEM_PROMPT = (
     "5. Return 1-30 files maximum. No binary files.\n"
     "6. Start your response with { and end with }. Nothing else."
 )
+
+
+async def ask_clarifying_questions(model: str, prompt: str) -> list[str]:
+    """
+    Ask the AI to generate 2-4 clarifying questions about the user's project request.
+    Returns a list of question strings.
+    """
+    user_msg = f"User request: {prompt}\n\nGenerate clarifying questions now."
+
+    call_fn = _dispatch_model(model)
+    raw = await call_fn(model, CLARIFY_SYSTEM_PROMPT, user_msg)
+
+    text = raw.strip()
+    text = re.sub(r'^```[a-zA-Z]*\n?', '', text)
+    text = re.sub(r'\n?```$', '', text).strip()
+
+    try:
+        result = json.loads(text)
+        if not isinstance(result, dict):
+            raise ValueError("Response is not a JSON object")
+        if "questions" not in result or not isinstance(result["questions"], list):
+            raise ValueError("Missing or invalid 'questions' key")
+        questions = result["questions"]
+        if not questions:
+            raise ValueError("No questions generated")
+        return questions
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(
+            502,
+            f"Failed to generate clarifying questions ({exc}). Raw response (first 600 chars): {raw[:600]}"
+        )
 
 
 async def run_agent(model: str, folder_path: str, prompt: str) -> dict:

@@ -73,6 +73,21 @@ class AIAgentRequest(BaseModel):
     model: str
 
 
+class AIClarifyingQuestionsRequest(BaseModel):
+    prompt: str
+    model: str
+
+
+class AIClarifyingQuestion(BaseModel):
+    question: str
+    hint: Optional[str] = None
+
+
+class AIClarifyingQuestionsResponse(BaseModel):
+    questions: List[AIClarifyingQuestion]
+    model: str
+
+
 class AIAgentCreatedFile(BaseModel):
     path: str                 # workspace-relative path
     filename: str             # relative to folder_path

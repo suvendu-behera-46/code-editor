@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from config import settings
-from routers import files, ai, github
+from routers import files, ai, github, execute
 
 app = FastAPI(
     title="AI Code Editor API",
@@ -22,6 +22,7 @@ app.add_middleware(
 app.include_router(files.router, prefix="/api/files", tags=["files"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(github.router, prefix="/api/github", tags=["github"])
+app.include_router(execute.router, prefix="/api/execute", tags=["execute"])
 
 # Ensure workspace directory exists on startup
 os.makedirs(settings.workspace_dir, exist_ok=True)

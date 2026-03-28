@@ -65,6 +65,12 @@ export const api = {
     return res.data;
   },
 
+  // Ask clarifying questions before running agent
+  askClarifyingQuestions: async ({ prompt, model }) => {
+    const res = await http.post('/ai/ask-questions', { prompt, model });
+    return res.data;
+  },
+
   // ── GitHub ─────────────────────────────────────────────────────────────────
 
   getGithubUser: async (token) => {
@@ -99,6 +105,19 @@ export const api = {
 
   triggerWorkflow: async ({ token, owner, repo, workflow_id, ref, inputs }) => {
     const res = await http.post('/github/workflow-trigger', { token, owner, repo, workflow_id, ref, inputs });
+    return res.data;
+  },
+
+  // ── Execute ────────────────────────────────────────────────────────────────
+
+  executeCode: async ({ code, language, timeout = 30, cwd = null }) => {
+    const res = await http.post('/execute/execute', { code, language, timeout, cwd });
+    return res.data;
+  },
+
+  // Get workspace directory where AI-generated files are stored
+  getWorkspaceInfo: async () => {
+    const res = await http.get('/execute/workspace-info');
     return res.data;
   },
 };

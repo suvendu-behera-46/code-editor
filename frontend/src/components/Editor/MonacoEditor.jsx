@@ -40,6 +40,11 @@ export default function MonacoEditor() {
       setCursorPosition(e.position.lineNumber, e.position.column);
     });
 
+    // Format code keyboard shortcut: Ctrl+Shift+F / Cmd+Shift+F
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+      editor.getAction('editor.action.formatDocument').run();
+    });
+
     // Focus editor
     editor.focus();
   }, [setCursorPosition]);
@@ -59,37 +64,94 @@ export default function MonacoEditor() {
     [activeFile, setFileContent, saveFile]
   );
 
+  const handleFormat = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.getAction('editor.action.formatDocument').run();
+    }
+  }, []);
+
   if (!activeFile) return null;
 
   return (
-    <Editor
-      key={activeFile}           // remount on file change
-      height="100%"
-      language={language}
-      value={content}
-      theme="vs-dark"
-      onChange={handleChange}
-      onMount={handleEditorMount}
-      options={{
-        fontSize: 14,
-        fontFamily: "'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace",
-        fontLigatures: true,
-        lineHeight: 22,
-        minimap: { enabled: false },
-        scrollBeyondLastLine: false,
-        wordWrap: 'on',
-        tabSize: 2,
-        insertSpaces: true,
-        renderLineHighlight: 'line',
-        cursorBlinking: 'blink',
-        cursorStyle: 'line',
-        smoothScrolling: true,
-        automaticLayout: true,
-        padding: { top: 10, bottom: 10 },
-        bracketPairColorization: { enabled: true },
-        guides: { indentation: true, bracketPairs: true },
-        suggest: { showSnippets: true },
-      }}
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Editor Toolbar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '8px 12px',
+        borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-panel)',
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={handleFormat}
+          title="Format code (Ctrl+Shift+F)"
+          style={{
+            padding: '4px 10px',
+            height: 28,
+            background: 'var(--bg-editor)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            color: 'var(--text-primary)',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.background = 'var(--accent)';
+            e.target.style.color = 'white';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.background = 'var(--bg-editor)';
+            e.target.style.color = 'var(--text-primary)';
+          }}
+        >
+          ✨ Format
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          {language === 'python' ? '🐍 Python' : language === 'javascript' ? '📜 JavaScript' : '👉 ' + language}
+        </span>
+      </div>
+
+      {/* Monaco Editor */}
+      <Editor
+        key={activeFile}           // remount on file change
+        height="100%"
+        language={language}
+        value={content}
+        theme="vs-dark"
+        onChange={handleChange}
+        onMount={handleEditorMount}
+        options={{
+          fontSize: 14,
+          fontFamily: "'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace",
+          fontLigatures: true,
+          lineHeight: 22,
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          wordWrap: 'on',
+          tabSize: 2,
+          insertSpaces: true,
+          renderLineHighlight: 'line',
+          cursorBlinking: 'blink',
+          cursorStyle: 'line',
+          smoothScrolling: true,
+          automaticLayout: true,
+          padding: { top: 10, bottom: 10 },
+          bracketPairColorization: { enabled: true },
+          guides: { indentation: true, bracketPairs: true },
+          suggest: { showSnippets: true },
+          // Formatting options
+          formatOnPaste: true,
+          formatOnType: true,
+          defaultFormatter: language === 'python' ? undefined : 'esbenp.prettier-vscode',
+        }}
+      />
+    </div>
   );
 }

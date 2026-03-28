@@ -6,10 +6,11 @@ import EditorTabs from './components/Editor/EditorTabs';
 import MonacoEditor from './components/Editor/MonacoEditor';
 import AIPanel from './components/AIPanel/AIPanel';
 import GitHubPanel from './components/GitHub/GitHubPanel';
+import Terminal from './components/Terminal/Terminal';
 import StatusBar from './components/StatusBar/StatusBar';
 
 export default function App() {
-  const { loadFileTree, activeFile, aiPanelOpen, githubPanelOpen } = useEditorStore();
+  const { loadFileTree, activeFile, aiPanelOpen, githubPanelOpen, terminalOpen } = useEditorStore();
 
   useEffect(() => {
     loadFileTree();
@@ -26,18 +27,27 @@ export default function App() {
           <FileTree />
         </div>
 
-        {/* Center: Editor */}
+        {/* Center: Editor + Terminal */}
         <div className="center-panel">
-          <EditorTabs />
-          {activeFile ? (
-            <MonacoEditor />
-          ) : (
-            <div className="welcome-screen">
-              <div className="welcome-screen__icon">⚡</div>
-              <div className="welcome-screen__title">AI Code Editor</div>
-              <div className="welcome-screen__hint">
-                Open a file from the explorer or create a new one
+          <div className="editor-area">
+            <EditorTabs />
+            {activeFile ? (
+              <MonacoEditor />
+            ) : (
+              <div className="welcome-screen">
+                <div className="welcome-screen__icon">⚡</div>
+                <div className="welcome-screen__title">AI Code Editor</div>
+                <div className="welcome-screen__hint">
+                  Open a file from the explorer or create a new one
+                </div>
               </div>
+            )}
+          </div>
+
+          {/* Terminal Panel */}
+          {terminalOpen && (
+            <div className="terminal-panel">
+              <Terminal />
             </div>
           )}
         </div>

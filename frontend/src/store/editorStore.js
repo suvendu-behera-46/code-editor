@@ -29,6 +29,10 @@ export const useEditorStore = create((set, get) => ({
   // Agent mode state
   agentLog: [],            // [{type: 'info'|'success'|'error', text: string}]
   agentLoading: false,
+  // Clarifying questions state
+  clarifyingQuestions: [], // [{question: string, hint?: string}]
+  clarifyingAnswers: {},   // { questionIndex: answer_text }
+  showClarifyingDialog: false,
 
   // ── GitHub ──────────────────────────────────────────────────────────────────
   githubPanelOpen: false,
@@ -39,6 +43,13 @@ export const useEditorStore = create((set, get) => ({
   repoBranch: 'main',
   commitMessage: '',
   githubStatus: null,   // { type: 'success'|'error', message }
+
+  // ── Terminal ─────────────────────────────────────────────────────────────────
+  terminalOpen: true,
+  terminalOutput: '',
+  terminalHistory: [],       // [{code, language, timestamp, output}]
+  terminalRunning: false,
+  terminalError: null,
 
   // ─────────────────────────────────────────────────────────────────────────────
   // File Actions
@@ -272,17 +283,60 @@ export const useEditorStore = create((set, get) => ({
 
   clearAgentLog: () => set({ agentLog: [] }),
 
-  runAgent: async () => {
-    const { aiTargetFolder, selectedModel, aiPrompt } = get();
+  // Ask clarifying questions before running agent
+  askClarifyingQuestions: async () => {
+    const { aiPrompt, selectedModel } = get();
     if (!aiPrompt.trim()) {
       set({ aiError: 'Enter a description of what to build.' });
       return;
     }
-    set({ agentLoading: true, agentLog: [], aiError: null });
+    try {
+      const response = await api.askClarifyingQuestions({
+        prompt: aiPrompt,
+        model: selectedModel,
+      });
+      set({
+        clarifyingQuestions: response.questions,
+        clarifyingAnswers: {},
+        showClarifyingDialog: true,
+      });
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'Failed to generate questions.';
+      set({ aiError: msg });
+    }
+  },
+
+  // Update answer for a specific question
+  updateClarifyingAnswer: (questionIndex, answer) => {
+    const { clarifyingAnswers } = get();
+    set({
+      clarifyingAnswers: {
+        ...clarifyingAnswers,
+        [questionIndex]: answer,
+      },
+    });
+  },
+
+  // Run agent with clarifying answers
+  runAgentWithAnswers: async () => {
+    const { aiTargetFolder, selectedModel, aiPrompt, clarifyingAnswers, clarifyingQuestions } = get();
+    
+    // Combine prompt with answers
+    let combinedPrompt = aiPrompt;
+    clarifyingQuestions.forEach((q, i) => {
+      const answer = clarifyingAnswers[i];
+      if (answer?.trim()) {
+        combinedPrompt += `\n\n• ${q.question}\nAnswer: ${answer}`;
+      }
+    });
+
+    // Close dialog and run agent
+    set({ showClarifyingDialog: false, agentLoading: true, agentLog: [], aiError: null });
+    
     try {
       const response = await api.agentRun({
         folder_path: aiTargetFolder,
-        prompt: aiPrompt,
+        prompt: combinedPrompt,
         model: selectedModel,
       });
       await get().loadFileTree();
@@ -295,11 +349,25 @@ export const useEditorStore = create((set, get) => ({
           ...response.created.map((p) => ({ type: 'created', text: p })),
         ],
         agentLoading: false,
+        clarifyingQuestions: [],
+        clarifyingAnswers: {},
       });
     } catch (err) {
       const msg = err.response?.data?.detail || err.message || 'Agent failed.';
       set({ agentLog: [{ type: 'error', text: msg }], agentLoading: false });
     }
+  },
+
+  closeClarifyingDialog: () => set({ showClarifyingDialog: false, clarifyingQuestions: [], clarifyingAnswers: {} }),
+
+  runAgent: async () => {
+    const { aiPrompt } = get();
+    if (!aiPrompt.trim()) {
+      set({ aiError: 'Enter a description of what to build.' });
+      return;
+    }
+    // First ask clarifying questions
+    await get().askClarifyingQuestions();
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -319,4 +387,56 @@ export const useEditorStore = create((set, get) => ({
   setGithubStatus: (status) => set({ githubStatus: status }),
   toggleGitHubPanel: () =>
     set((state) => ({ githubPanelOpen: !state.githubPanelOpen, aiPanelOpen: state.githubPanelOpen ? state.aiPanelOpen : false })),
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Terminal Actions
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  executeCode: async (code, language = 'python', cwd = null) => {
+    set({ terminalRunning: true, terminalError: null });
+    try {
+      const response = await api.executeCode({ code, language, timeout: 60, cwd });
+      let output = '';
+      
+      // For shell commands, show the command first
+      if (language === 'shell' || language === 'bash' || language === 'cmd') {
+        output = `$ ${code}\n`;
+      }
+      
+      // Add stdout
+      if (response.output) {
+        output += response.output;
+      }
+      
+      // Add stderr with error formatting
+      if (response.error) {
+        output += (response.output ? '' : '') + response.error;
+      }
+      
+      // Add newline at end if output doesn't have one
+      if (output && !output.endsWith('\n')) {
+        output += '\n';
+      }
+      
+      set((state) => ({
+        terminalOutput: state.terminalOutput + output,
+        terminalHistory: [
+          ...state.terminalHistory,
+          { code, language, timestamp: new Date().toISOString(), output },
+        ],
+        terminalRunning: false,
+      }));
+    } catch (err) {
+      const errorMsg = `Error executing code: ${err.message}`;
+      set((state) => ({
+        terminalOutput: state.terminalOutput + `\n[ERROR] ${errorMsg}\n`,
+        terminalError: errorMsg,
+        terminalRunning: false,
+      }));
+    }
+  },
+
+  clearTerminal: () => set({ terminalOutput: '', terminalError: null }),
+
+  toggleTerminal: () => set((state) => ({ terminalOpen: !state.terminalOpen })),
 }));
