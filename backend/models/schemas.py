@@ -88,6 +88,16 @@ class AIClarifyingQuestionsResponse(BaseModel):
     model: str
 
 
+# ── Workspace schemas ─────────────────────────────────────────────────────────
+
+class WorkspaceSetRequest(BaseModel):
+    path: str          # absolute path on the server machine
+
+
+class WorkspaceInfo(BaseModel):
+    path: str          # current absolute workspace path
+
+
 class AIAgentCreatedFile(BaseModel):
     path: str                 # workspace-relative path
     filename: str             # relative to folder_path

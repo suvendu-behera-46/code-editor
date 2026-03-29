@@ -4,7 +4,6 @@ AI Router — forwards edit/explain/refactor/generate requests to LLM providers.
 
 import os
 from fastapi import APIRouter
-from config import settings
 from models.schemas import (
     AIEditRequest, AIEditResponse,
     AIFolderGenerateRequest, AIFolderGenerateResponse, AIFolderGenerateFile,
@@ -14,6 +13,7 @@ from models.schemas import (
 )
 from services.llm_service import run_ai, run_ai_folder_generate, run_agent, ask_clarifying_questions
 from routers.files import safe_path
+from workspace_state import get_workspace
 
 router = APIRouter()
 
@@ -90,7 +90,7 @@ async def generate_in_folder(body: AIFolderGenerateRequest):
     Returns the proposed file list WITHOUT writing anything to disk.
     The client reviews each file and calls /files/save to accept individual files.
     """
-    workspace = os.path.abspath(settings.workspace_dir)
+    workspace = get_workspace()
 
     # Resolve target folder (empty string or "/" means workspace root)
     folder_rel = body.folder_path.strip().strip("/")
@@ -118,6 +118,14 @@ async def generate_in_folder(body: AIFolderGenerateRequest):
     proposed: list[AIFolderGenerateFile] = []
     for item in file_list:
         filename = item["filename"].lstrip("/").lstrip("\\")
+
+        # Strip duplicate folder prefix: AI sometimes returns "myapp/index.js"
+        # when the target folder is already "myapp" — avoid "myapp/myapp/index.js"
+        if folder_rel:
+            folder_prefix = folder_rel.rstrip("/") + "/"
+            if filename.startswith(folder_prefix):
+                filename = filename[len(folder_prefix):]
+
         content = item.get("content", "")
 
         file_abs = os.path.normpath(os.path.join(folder_abs, filename))
@@ -141,7 +149,7 @@ async def run_agent_endpoint(body: AIAgentRequest):
     Autonomous agent: AI plans a full project and all files are written to disk
     immediately — no per-file confirmation required.
     """
-    workspace = os.path.abspath(settings.workspace_dir)
+    workspace = get_workspace()
 
     folder_rel = body.folder_path.strip().strip("/")
     folder_abs = safe_path(folder_rel) if folder_rel else workspace
@@ -152,6 +160,13 @@ async def run_agent_endpoint(body: AIAgentRequest):
     created: list[str] = []
     for item in plan.get("files", []):
         filename = item["filename"].lstrip("/").lstrip("\\")
+
+        # Strip duplicate folder prefix the same way as generate_in_folder
+        if folder_rel:
+            folder_prefix = folder_rel.rstrip("/") + "/"
+            if filename.startswith(folder_prefix):
+                filename = filename[len(folder_prefix):]
+
         content = item.get("content", "")
 
         file_abs = os.path.normpath(os.path.join(folder_abs, filename))

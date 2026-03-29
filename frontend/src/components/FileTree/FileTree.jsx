@@ -33,7 +33,7 @@ function readAsText(file) {
 }
 
 export default function FileTree() {
-  const { fileTree, loadFileTree, createFile, createFolder, openFile } = useEditorStore();
+  const { fileTree, loadFileTree, createFile, createFolder, openFile, selectedFolder, setSelectedFolder, workspacePath, openFolder } = useEditorStore();
 
   const fileInputRef   = useRef(null);
   const folderInputRef = useRef(null);
@@ -41,13 +41,18 @@ export default function FileTree() {
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState(null); // {ok, count} | null
 
-  // ── Create new file/folder via prompt ──────────────────────────────────────
+  // ── Open a real local folder via native OS picker ───────────────────────────────
+
+  const handleOpenFolder = () => openFolder();
+
+  // ── Create new file/folder via prompt ────────────────────────────────────────
 
   const handleNewFile = async () => {
     const name = window.prompt('File name (e.g. index.js):');
     if (!name?.trim()) return;
+    const fullPath = selectedFolder ? `${selectedFolder}/${name.trim()}` : name.trim();
     try {
-      await createFile(name.trim());
+      await createFile(fullPath);
     } catch (err) {
       alert(err.response?.data?.detail || err.message);
     }
@@ -56,8 +61,9 @@ export default function FileTree() {
   const handleNewFolder = async () => {
     const name = window.prompt('Folder name:');
     if (!name?.trim()) return;
+    const fullPath = selectedFolder ? `${selectedFolder}/${name.trim()}` : name.trim();
     try {
-      await createFolder(name.trim());
+      await createFolder(fullPath);
     } catch (err) {
       alert(err.response?.data?.detail || err.message);
     }
@@ -188,18 +194,18 @@ export default function FileTree() {
           <button
             className="left-panel__action-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Open file(s) from disk"
+            title="Import individual files from disk into workspace"
             disabled={importing}
           >
-            📂
+            +📄
           </button>
           <button
             className="left-panel__action-btn"
-            onClick={() => folderInputRef.current?.click()}
-            title="Open folder from disk"
-            disabled={importing}
+            onClick={handleOpenFolder}
+            title="Open a folder from your computer — files are read/written directly to that folder"
+            style={{ fontSize: 13 }}
           >
-            🗂
+            📂
           </button>
           <button
             className="left-panel__action-btn"
@@ -210,6 +216,58 @@ export default function FileTree() {
           </button>
         </div>
       </div>
+
+      {/* Current workspace path display */}
+      {workspacePath && (
+        <div
+          title={`Workspace: ${workspacePath}`}
+          style={{
+            padding: '3px 8px',
+            fontSize: 10,
+            background: 'rgba(255,255,255,0.04)',
+            borderBottom: '1px solid var(--border)',
+            color: 'var(--text-secondary)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+          }}
+          onClick={handleOpenFolder}
+        >
+          📁 {workspacePath}
+        </div>
+      )}
+
+      {/* Selected folder context indicator */}
+      {selectedFolder && (
+        <div style={{
+          padding: '3px 8px',
+          fontSize: 11,
+          background: 'rgba(0, 122, 204, 0.12)',
+          borderBottom: '1px solid rgba(0, 122, 204, 0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          color: 'var(--accent)',
+        }}>
+          <span style={{ opacity: 0.7 }}>in:</span>
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedFolder}
+          </span>
+          <button
+            onClick={() => setSelectedFolder('')}
+            title="Clear folder selection"
+            style={{
+              background: 'transparent', color: 'var(--text-secondary)',
+              fontSize: 12, padding: 0, width: 14, height: 14,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Import status banner */}
       {(importing || importStatus) && (

@@ -7,16 +7,41 @@ export default function FileTreeItem({ node, depth = 0 }) {
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
 
-  const { activeFile, openFile, deleteNode, renameNode } = useEditorStore();
+  const { activeFile, openFile, deleteNode, renameNode, createFile, createFolder, selectedFolder, setSelectedFolder } = useEditorStore();
   const isFolder = node.type === 'folder';
   const isActive = !isFolder && activeFile === node.path;
+  const isFolderSelected = isFolder && selectedFolder === node.path;
   const indent = depth * 12 + 8;
 
   const handleClick = () => {
     if (isFolder) {
       setOpen((o) => !o);
+      // Toggle folder selection: selecting provides context for header "New File/Folder" buttons
+      setSelectedFolder(selectedFolder === node.path ? '' : node.path);
     } else {
       openFile(node.path);
+    }
+  };
+
+  const handleNewFileHere = async (e) => {
+    e.stopPropagation();
+    const name = window.prompt(`File name (inside "${node.name}"):`);
+    if (!name?.trim()) return;
+    try {
+      await createFile(`${node.path}/${name.trim()}`);
+    } catch (err) {
+      alert(err.response?.data?.detail || err.message);
+    }
+  };
+
+  const handleNewFolderHere = async (e) => {
+    e.stopPropagation();
+    const name = window.prompt(`Folder name (inside "${node.name}"):`);
+    if (!name?.trim()) return;
+    try {
+      await createFolder(`${node.path}/${name.trim()}`);
+    } catch (err) {
+      alert(err.response?.data?.detail || err.message);
     }
   };
 
@@ -69,7 +94,7 @@ export default function FileTreeItem({ node, depth = 0 }) {
   return (
     <>
       <div
-        className={`tree-item${isActive ? ' active' : ''}`}
+        className={`tree-item${isActive ? ' active' : ''}${isFolderSelected ? ' folder-selected' : ''}`}
         style={{ paddingLeft: indent }}
         onClick={handleClick}
         onDoubleClick={isFolder ? undefined : handleRenameStart}
@@ -85,6 +110,25 @@ export default function FileTreeItem({ node, depth = 0 }) {
         </span>
 
         <span className="tree-item__name">{node.name}</span>
+
+        {isFolder && (
+          <>
+            <button
+              className="tree-item__action"
+              onClick={handleNewFileHere}
+              title={`New file in "${node.name}"`}
+            >
+              +
+            </button>
+            <button
+              className="tree-item__action"
+              onClick={handleNewFolderHere}
+              title={`New folder in "${node.name}"`}
+            >
+              ⊞
+            </button>
+          </>
+        )}
 
         <button
           className="tree-item__delete"

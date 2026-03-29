@@ -11,22 +11,40 @@ from typing import List, Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from config import settings
-from models.schemas import FileCreateRequest, FileSaveRequest, FileRenameRequest, FileNode
+from models.schemas import FileCreateRequest, FileSaveRequest, FileRenameRequest, FileNode, WorkspaceSetRequest, WorkspaceInfo
+from workspace_state import get_workspace, set_workspace
 
 router = APIRouter()
 
 
 def safe_path(relative: str) -> str:
-    """Resolve a user-supplied relative path to an absolute path inside workspace.
+    """Resolve a user-supplied relative path to an absolute path inside the current workspace.
     Raises HTTPException if the result escapes the workspace root."""
-    workspace = os.path.abspath(settings.workspace_dir)
+    workspace = get_workspace()
     # Strip leading slashes to prevent os.path.join absolute override
     clean = relative.lstrip("/").lstrip("\\")
     full = os.path.normpath(os.path.join(workspace, clean))
     if not full.startswith(workspace + os.sep) and full != workspace:
         raise HTTPException(400, "Invalid path: must be within the workspace.")
     return full
+
+
+@router.get("/workspace", response_model=WorkspaceInfo)
+def get_workspace_endpoint():
+    """Return the current workspace directory path."""
+    return WorkspaceInfo(path=get_workspace())
+
+
+@router.post("/workspace", response_model=WorkspaceInfo)
+def set_workspace_endpoint(body: WorkspaceSetRequest):
+    """Change the active workspace to any directory on the server machine."""
+    if not body.path or not body.path.strip():
+        raise HTTPException(400, "Path cannot be empty.")
+    try:
+        resolved = set_workspace(body.path.strip())
+        return WorkspaceInfo(path=resolved)
+    except Exception as e:
+        raise HTTPException(400, f"Cannot set workspace: {e}")
 
 
 def _build_tree(directory: str, base: str) -> List[Any]:
@@ -56,7 +74,7 @@ def _build_tree(directory: str, base: str) -> List[Any]:
 @router.get("/tree")
 def get_file_tree():
     """Return the complete file tree of the workspace."""
-    workspace = os.path.abspath(settings.workspace_dir)
+    workspace = get_workspace()
     os.makedirs(workspace, exist_ok=True)
     return _build_tree(workspace, workspace)
 
@@ -85,7 +103,9 @@ async def create_file(body: FileCreateRequest):
     else:
         if os.path.exists(full):
             raise HTTPException(409, f"File already exists: {body.path}")
-        os.makedirs(os.path.dirname(full), exist_ok=True)
+        parent = os.path.dirname(full)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         async with aiofiles.open(full, "w", encoding="utf-8") as f:
             await f.write(body.content)
         return {"success": True, "path": body.path, "type": "file"}
@@ -93,11 +113,11 @@ async def create_file(body: FileCreateRequest):
 
 @router.put("/save")
 async def save_file(body: FileSaveRequest):
-    """Save (overwrite) a file's content."""
+    """Save (overwrite) a file's content. Creates parent directories if missing."""
     full = safe_path(body.path)
-    if not os.path.isfile(full):
-        # Auto-create if missing
-        os.makedirs(os.path.dirname(full), exist_ok=True)
+    parent = os.path.dirname(full)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     async with aiofiles.open(full, "w", encoding="utf-8") as f:
         await f.write(body.content)
     return {"success": True, "path": body.path}

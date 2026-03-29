@@ -16,6 +16,35 @@ from fastapi import HTTPException
 
 from config import settings
 
+
+def _try_parse_json(text: str, error_prefix: str, raw: str):
+    """
+    Parse JSON with automatic escape-repair fallback.
+    LLMs often embed code content that contains invalid JSON escape sequences
+    (e.g. \\s, \\d, \\( from regex patterns, or Windows paths like C:\\Users).
+    Strategy:
+      1. Try json.loads as-is.
+      2. If that fails, replace every backslash not followed by a valid JSON
+         escape character with a double-backslash, then retry.
+      3. Raise HTTP 502 with a helpful message if both attempts fail.
+    """
+    # First attempt — fast path, no modification
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Second attempt — fix invalid escape sequences
+    # Valid JSON escape chars after '\': " \ / b f n r t u
+    fixed = re.sub(r'\\(?!["\\\\/bfnrtu])', r'\\\\', text)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError as exc2:
+        raise HTTPException(
+            502,
+            f"{error_prefix} ({exc2}). Raw response (first 600 chars): {raw[:600]}"
+        )
+
 SYSTEM_PROMPTS = {
     "edit": (
         "You are an expert code editor. Modify the provided code strictly according to the user's instruction. "
@@ -258,19 +287,13 @@ async def run_ai_folder_generate(
     text = re.sub(r'^```[a-zA-Z]*\n?', '', text)
     text = re.sub(r'\n?```$', '', text).strip()
 
-    try:
-        files = json.loads(text)
-        if not isinstance(files, list):
-            raise ValueError("Response is not a JSON array")
-        for f in files:
-            if not isinstance(f, dict) or "filename" not in f or "content" not in f:
-                raise ValueError(f"Invalid file entry: {f!r}")
-        return files
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise HTTPException(
-            502,
-            f"AI returned invalid JSON ({exc}). Raw response (first 600 chars): {raw[:600]}"
-        )
+    files = _try_parse_json(text, "AI returned invalid JSON", raw)
+    if not isinstance(files, list):
+        raise HTTPException(502, f"AI response is not a JSON array. Raw (first 600): {raw[:600]}")
+    for f in files:
+        if not isinstance(f, dict) or "filename" not in f or "content" not in f:
+            raise HTTPException(502, f"Invalid file entry in AI response: {f!r}")
+    return files
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -320,21 +343,13 @@ async def ask_clarifying_questions(model: str, prompt: str) -> list[str]:
     text = re.sub(r'^```[a-zA-Z]*\n?', '', text)
     text = re.sub(r'\n?```$', '', text).strip()
 
-    try:
-        result = json.loads(text)
-        if not isinstance(result, dict):
-            raise ValueError("Response is not a JSON object")
-        if "questions" not in result or not isinstance(result["questions"], list):
-            raise ValueError("Missing or invalid 'questions' key")
-        questions = result["questions"]
-        if not questions:
-            raise ValueError("No questions generated")
-        return questions
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise HTTPException(
-            502,
-            f"Failed to generate clarifying questions ({exc}). Raw response (first 600 chars): {raw[:600]}"
-        )
+    result = _try_parse_json(text, "Failed to generate clarifying questions", raw)
+    if not isinstance(result, dict) or "questions" not in result or not isinstance(result["questions"], list):
+        raise HTTPException(502, f"Unexpected clarifying-questions format. Raw (first 600): {raw[:600]}")
+    questions = result["questions"]
+    if not questions:
+        raise HTTPException(502, "AI returned an empty questions list.")
+    return questions
 
 
 async def run_agent(model: str, folder_path: str, prompt: str) -> dict:
@@ -356,19 +371,11 @@ async def run_agent(model: str, folder_path: str, prompt: str) -> dict:
     text = re.sub(r'^```[a-zA-Z]*\n?', '', text)
     text = re.sub(r'\n?```$', '', text).strip()
 
-    try:
-        result = json.loads(text)
-        if not isinstance(result, dict):
-            raise ValueError("Response is not a JSON object")
-        if "files" not in result or not isinstance(result["files"], list):
-            raise ValueError("Missing or invalid 'files' key")
-        for f in result["files"]:
-            if not isinstance(f, dict) or "filename" not in f or "content" not in f:
-                raise ValueError(f"Invalid file entry: {f!r}")
-        result.setdefault("summary", f"Created {len(result['files'])} file(s).")
-        return result
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise HTTPException(
-            502,
-            f"Agent returned invalid JSON ({exc}). Raw response (first 600 chars): {raw[:600]}"
-        )
+    result = _try_parse_json(text, "Agent returned invalid JSON", raw)
+    if not isinstance(result, dict) or "files" not in result or not isinstance(result["files"], list):
+        raise HTTPException(502, f"Unexpected agent response format. Raw (first 600): {raw[:600]}")
+    for f in result["files"]:
+        if not isinstance(f, dict) or "filename" not in f or "content" not in f:
+            raise HTTPException(502, f"Invalid file entry in agent response: {f!r}")
+    result.setdefault("summary", f"Created {len(result['files'])} file(s).")
+    return result

@@ -60,6 +60,18 @@ export const api = {
     return res.data;
   },
 
+  // ── Workspace ──────────────────────────────────────────────────────────────────
+
+  getWorkspace: async () => {
+    const res = await http.get('/files/workspace');
+    return res.data;
+  },
+
+  setWorkspace: async (path) => {
+    const res = await http.post('/files/workspace', { path });
+    return res.data;
+  },
+
   agentRun: async ({ folder_path, prompt, model }) => {
     const res = await http.post('/ai/agent', { folder_path, prompt, model });
     return res.data;
